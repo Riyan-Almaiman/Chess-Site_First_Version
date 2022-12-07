@@ -1,0 +1,19 @@
+﻿@using ChessBlazor.Client.Pages;
+@using ChessServerApp.Data
+<EditForm Model="@Name" OnValidSubmit="@MapName">
+
+
+    <InputText  @bind-Value=@name />
+
+    <button type="submit">Submit</button>
+</EditForm>
+
+@code {
+    piece Name = new();
+    async Task MapName()
+    {
+
+    }
+    string name; 
+}
+

@@ -1,0 +1,339 @@
+﻿@using ChessBlazor.Client.Pages;
+@using ChessServerApp.Data;
+@using Microsoft.AspNetCore.SignalR.Client;
+@inject NavigationManager NavigationManager
+
+@code {
+    [Parameter] public HubConnection hubConnection { get; set; }
+    int Player = 0;
+    bool GameState; 
+    Board board = new Board();
+    public string? Lobbyname;
+    protected override void OnInitialized()
+    {
+        board.initialize();
+        GameState = true; 
+    }
+    protected override async Task OnInitializedAsync()
+    {
+
+        hubConnection.On<string, string, int>("ReceiveMove", (selectedpiece, tile, move) =>
+        {
+            MoveReceived(selectedpiece, tile, move);
+
+        });
+
+        hubConnection.On<int, string>("ConnectionInfo", (playernumber, LobbyName) =>
+       {
+           Player = playernumber;
+           Lobbyname = LobbyName;
+           InvokeAsync(() => StateHasChanged());
+
+       });
+        if(Player!=1)
+            await hubConnection.SendAsync("ConnectionInfo", hubConnection.ConnectionId);
+
+
+        Console.WriteLine($"{hubConnection.ConnectionId} connected");
+
+    }
+
+
+    private async Task sendmove(string activepiece, string selectedtile, int turn)
+    {
+        Console.WriteLine( $"Move Sent: {activepiece} to {selectedtile} from {hubConnection.ConnectionId}");
+        await hubConnection.SendAsync("SendMove", activepiece, selectedtile, turn, hubConnection.ConnectionId, Lobbyname);
+
+    }
+    public void MoveReceived(string piece, string tile, int move)
+    {
+
+        Console.WriteLine($" {hubConnection.ConnectionId} Move received.  {piece} to {tile}");
+        if (move == board.turn)
+            return;
+        possiblemoves.Clear();
+
+
+        var myKey = board.BoardState.FirstOrDefault(x => x.Value == piece).Key;
+        int[] arr = board.indexOfAddress(myKey);
+        int[] arr2 = board.indexOfAddress(tile);
+         if  (board.BoardLayout[arr2[0], arr2[1]].Contains('k') || board.BoardLayout[arr2[0], arr2[1]].Contains('K'))
+        { GameState = false; }
+        board.BoardState[myKey] = "  ";
+        board.BoardLayout[arr[0], arr[1]] = "  ";
+
+        board.BoardState[tile] = piece;
+        board.BoardLayout[arr2[0], arr2[1]] = piece;
+        board.turn++;
+        Player = Player + 2;
+       
+        InvokeAsync(() => StateHasChanged());
+
+    }
+
+
+    string? activePiece = null;
+    string? selectedTile = null;
+
+    List<string> possiblemoves = new List<string>();
+
+    public bool IsPlayersTurn()
+    {
+        if (activePiece==null)
+            return false; 
+        if (board.turn % 2 != 0 && Player % 2 ==0 ){ return false; }
+        if (board.turn % 2 == 0 && Player % 2 != 0) { return false; }
+
+        if (board.turn % 2 != 0 && activePiece.ToUpper() != activePiece)
+        {
+
+            return false;
+
+        }
+        else if (board.turn % 2 == 0 && activePiece.ToUpper() == activePiece)
+        {
+
+            return false;
+
+        }
+        else
+            return true;
+
+    }
+
+    public void addPossibleMovesToListOnclick()
+    {
+        if (!IsPlayersTurn())
+        {
+            activePiece = null; 
+            possiblemoves.Clear();
+            return;
+
+        }
+
+        if(activePiece=="  "|| activePiece==null)
+        {
+            activePiece = null; 
+            possiblemoves.Clear();
+            return;
+
+
+        }
+        possiblemoves.Clear();
+        foreach (string i in board.TileAddresses)
+        {
+            int[] arr = board.indexOfAddress(i);
+            if (CheckMoves.IsValidMove(activePiece, board.indexOfPiece(activePiece), arr, board.BoardLayout, board.pieceslist)) { possiblemoves.Add(board.TileAddresses[arr[0], arr[1]]); }
+
+        }
+
+
+    }
+
+
+    public void movepiece(int locali, int localj)
+    {
+        if (activePiece == null) { return; }
+        var myKey = board.BoardState.FirstOrDefault(x => x.Value == activePiece).Key;
+        int[] arr = board.indexOfAddress(myKey);
+        if (board.BoardLayout[locali, localj].Contains('k') || board.BoardLayout[locali, localj].Contains('K'))
+        { GameState = false; }
+
+        board.BoardState[myKey] = "  ";
+        board.BoardLayout[arr[0], arr[1]] = "  ";
+
+        selectedTile = board.TileAddresses[locali, localj];
+        board.BoardLayout[locali, localj] = activePiece;
+        board.BoardState[board.TileAddresses[locali, localj]] = activePiece;
+        board.turn++;
+
+
+
+        sendmove(activePiece, selectedTile, board.turn);
+        
+        possiblemoves.Clear();
+        activePiece = null;
+        selectedTile = null;
+        InvokeAsync(() => StateHasChanged());
+    }
+
+ 
+
+}
+
+@if(GameState == true)
+{
+
+<div class="square">
+
+@for (int i = 0; i<8; i++)
+{
+        int LocalI = i; 
+        @for (int j = 0; j<8; j++)
+    {
+            int localJ = j; 
+            if(i%2 == 0)
+        {
+            if(j%2 == 0)
+            {
+                    if (possiblemoves.Contains(board.TileAddresses[i, j]))
+                    {
+                        <div @onclick="() => { movepiece( LocalI,  localJ); } "
+                             class="white @(board.BoardState[board.TileAddresses[i,j]]==activePiece ? "active" :"") @(possiblemoves.Contains(board.TileAddresses[LocalI,localJ]) ? "move" : "") ">
+                            <div class=" @(board.BoardLayout[i,j].ToUpper()==board.BoardLayout[i,j] ? "One" : "Two")">
+                                @PieceMap.Pieces(@board.BoardLayout[i,j])
+                            </div>
+                        </div>
+                        
+                    }
+                    else
+                    {
+                    <div @onclick="() => { activePiece  = board.BoardState[board.TileAddresses[LocalI,localJ]]; addPossibleMovesToListOnclick(); } "
+                        class="white @(board.BoardState[board.TileAddresses[i,j]]==activePiece ? "active" :"") @(possiblemoves.Contains(board.TileAddresses[LocalI,localJ]) ? "move" : "") ">
+                            <div class=" @(board.BoardLayout[i,j].ToUpper()==board.BoardLayout[i,j] ? "One" : "Two")">
+                                @PieceMap.Pieces(@board.BoardLayout[i,j])
+                            </div>
+                        </div>
+                    }
+            }
+
+            else
+            {
+                    if (possiblemoves.Contains(board.TileAddresses[i, j]))
+                    {
+                        <div @onclick="() => { movepiece( LocalI,  localJ); } "
+                                class="black @(board.BoardState[board.TileAddresses[i,j]]==activePiece ? "active" :"") @(possiblemoves.Contains(board.TileAddresses[LocalI,localJ]) ? "move" : "") ">
+                            <div class=" @(board.BoardLayout[i,j].ToUpper()==board.BoardLayout[i,j] ? "One" : "Two")">
+                                @PieceMap.Pieces(@board.BoardLayout[i,j])
+                            </div>
+                        </div>
+
+                    }
+                    else
+                    {
+                        <div @onclick="() => { activePiece  = board.BoardState[board.TileAddresses[LocalI,localJ]]; addPossibleMovesToListOnclick(); } "
+         class="black @(board.BoardState[board.TileAddresses[i,j]]==activePiece ? "active" :"") @(possiblemoves.Contains(board.TileAddresses[LocalI,localJ]) ? "move" : "") ">
+                            <div class=" @(board.BoardLayout[i,j].ToUpper()==board.BoardLayout[i,j] ? "One" : "Two")">
+                                @PieceMap.Pieces(@board.BoardLayout[i,j])
+                            </div>
+                        </div>
+                    }
+            }
+
+
+        }
+        else
+        {
+            if(j%2 ==0)
+                {
+                    if (possiblemoves.Contains(board.TileAddresses[i, j]))
+                    {
+                        <div @onclick="() => { movepiece( LocalI,  localJ); } "
+         class="black @(board.BoardState[board.TileAddresses[i,j]]==activePiece ? "active" :"") @(possiblemoves.Contains(board.TileAddresses[LocalI,localJ]) ? "move" : "") ">
+                            <div class=" @(board.BoardLayout[i,j].ToUpper()==board.BoardLayout[i,j] ? "One" : "Two")">
+                                @PieceMap.Pieces(@board.BoardLayout[i,j])
+                            </div>
+                        </div>
+
+                    }
+                    else
+                    {
+                        <div @onclick="() => { activePiece  = board.BoardState[board.TileAddresses[LocalI,localJ]]; addPossibleMovesToListOnclick(); } "
+         class="black @(board.BoardState[board.TileAddresses[i,j]]==activePiece ? "active" :"") @(possiblemoves.Contains(board.TileAddresses[LocalI,localJ]) ? "move" : "") ">
+                            <div class=" @(board.BoardLayout[i,j].ToUpper()==board.BoardLayout[i,j] ? "One" : "Two")">
+                                @PieceMap.Pieces(@board.BoardLayout[i,j])
+                            </div>
+                        </div>
+                    }
+            }
+            else
+            {
+                    if (possiblemoves.Contains(board.TileAddresses[i, j]))
+                    {
+                        <div @onclick="() => { movepiece( LocalI,  localJ); } "
+                             class="white @(board.BoardState[board.TileAddresses[i,j]]==activePiece ? "active" :"") @(possiblemoves.Contains(board.TileAddresses[LocalI,localJ]) ? "move" : "") ">
+                            <div class=" @(board.BoardLayout[i,j].ToUpper()==board.BoardLayout[i,j] ? "One" : "Two")">
+                                @PieceMap.Pieces(@board.BoardLayout[i,j])
+                            </div>
+                        </div>
+                        
+                    }
+                    else
+                    {
+                    <div @onclick="() => { activePiece  = board.BoardState[board.TileAddresses[LocalI,localJ]]; addPossibleMovesToListOnclick(); } "
+                        class="white @(board.BoardState[board.TileAddresses[i,j]]==activePiece ? "active" :"") @(possiblemoves.Contains(board.TileAddresses[LocalI,localJ]) ? "move" : "") ">
+                            <div class=" @(board.BoardLayout[i,j].ToUpper()==board.BoardLayout[i,j] ? "One" : "Two")">
+                                @PieceMap.Pieces(@board.BoardLayout[i,j])
+                            </div>
+                        </div>
+                    }
+            }
+
+        }
+
+    }
+
+
+}
+</div>
+<p></p>
+    <p></p>
+
+    <p></p>
+    <p></p>
+
+    <p></p>
+    <p></p>
+
+    <h4 style="color:blanchedalmond"> Lobby Name: @Lobbyname </h4>
+
+
+@*<h1 style="background-color:tomato;"> Connection ID: @hubConnection.ConnectionId </h1>
+*@
+    <h4 style="color:blanchedalmond">
+    Your Color: @if (Player % 2 == 0)
+    {
+        <span class ="Two">Green</span>
+    } 
+
+    else{
+        <span class="One">Blue</span>
+    }
+        </h4 >
+
+    <h4 style="color:blanchedalmond">
+    Turn:
+    @if (board.turn % 2 == 0)
+    {
+        <span class="Two">Green's Turn</span>
+    }
+
+    else if (board.turn % 2 != 0 )
+    {
+        <span class="One">Blue's Turn</span>
+    }
+        </h4 >
+
+        <h4 style="color:blanchedalmond">
+     Selected Piece: @if (activePiece != null)
+    {
+        <span class=" @(activePiece.ToUpper()== activePiece ? "One" : "Two")">@activePiece</span>
+    }
+    </h4 >
+
+<p></p>
+
+<p></p>
+<p></p>
+
+    <h4 style="color:blanchedalmond">Turn number: @board.turn</h4>
+    <h4 style="color:blanchedalmond"> @hubConnection.State</h4>
+
+    
+
+}
+
+else
+{
+<h1 style="background-color:red;">Game over - Refresh to create a new game</h1>
+}

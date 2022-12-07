@@ -1,0 +1,114 @@
+﻿@using ChessServerApp.Pages
+@using ChessServerApp.Data
+@using Microsoft.AspNetCore.SignalR.Client;
+@inject NavigationManager navigationmanager
+@page "/"
+
+@code {
+ 
+    Lobbies.Lobby lobby = new();
+    public string LobbyName;
+    bool gamestate = false; 
+    HubConnection hubConnection; 
+
+    protected override async Task OnInitializedAsync()
+    {
+         hubConnection = new HubConnectionBuilder()
+          .WithUrl(navigationmanager.ToAbsoluteUri("/gamehub"))
+              .Build();
+        await hubConnection.StartAsync();
+
+        hubConnection.On<bool>("NoLobbyFoundOrFull", (Gamestate) =>
+    {
+        Gamestate = false;
+        gamestate = Gamestate;
+
+    });
+
+        hubConnection.On<bool>("LobbyExists", (Gamestate) =>
+    {
+          Gamestate = false;
+          gamestate = Gamestate;
+
+    });
+
+        hubConnection.On<bool>("JoinGame", (Gamestate) =>
+       {
+       Gamestate = true;
+       gamestate = Gamestate;
+           InvokeAsync(() => StateHasChanged());
+
+
+       });
+        
+    }
+
+
+    async Task CreateLobby()
+    {
+        string lobbyid = Guid.NewGuid().ToString();
+        await hubConnection.SendAsync("CreateLobby", hubConnection.ConnectionId, lobbyid, LobbyName);
+
+
+    }
+    async Task Joinlobby()
+    {
+
+        await hubConnection.SendAsync("JoinLobby", hubConnection.ConnectionId, LobbyName);
+
+    }
+
+  
+
+
+
+}
+@if(gamestate==false){
+
+<EditForm Model="@lobby" OnSubmit="@Joinlobby">
+        <span style="color:red">If you're on a desktop browser make the browser smaller, site works best with Mobile dimensions (working on this)</span>      
+
+
+        <p>          <span style="color:red">Once you create a lobby you have to wait for someone to join and make a move</span>
+
+</p>
+        <p>            <span style="color:red">Pawns don't change when they get to the end, rooks and kings cant swap spots and when the king is captured the game instantly ends (work in progress)</span>
+</p>
+
+        <p></p>
+
+        <p>
+            <span style="color:white"> Enter Lobby Name to Join or Create:</span>
+        </p>
+        <InputText @bind-Value=@LobbyName />
+    <p></p>
+    <p></p>
+
+    <p></p>
+
+    <p></p>
+    
+    <button type="submit">Press to join this Lobby</button>
+        <span style="color:white">Lobby Name is case sensitive and won't work if it's full or doesn't exist</span>
+
+</EditForm>
+<p></p>
+    <p></p>
+
+    <p></p>
+
+    <p></p>
+
+
+<EditForm Model="@lobby" OnSubmit="@CreateLobby">
+
+    <button type="submit">Press to Create a Lobby with this name</button>
+        <span style="color:white">Lobby Name is Case sensitive and won't work if it already exists</span>
+
+</EditForm>}
+
+
+@if(gamestate == true){
+
+    <Game hubConnection="hubConnection" />
+}
